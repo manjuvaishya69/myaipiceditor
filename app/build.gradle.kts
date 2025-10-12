@@ -60,12 +60,14 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.0")
     // ONNX Runtime → needed to load and run .onnx AI models offline
 
-    // TensorFlow Lite
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+    // --- TensorFlow Lite (matching versions) ---
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.17.0")
+    implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-gpu-api:2.17.0")
 
     // --- Image Processing ---
-    implementation("androidx.exifinterface:exifinterface:1.3.6")
+    implementation("androidx.exifinterface:exifinterface:1.4.1")
     // Helps handle image rotation/metadata correctly
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7")
@@ -75,11 +77,11 @@ dependencies {
     // Compose-friendly way to request/manage camera & storage permissions
 
     // --- Navigation ---
-    implementation("androidx.navigation:navigation-compose:2.7.6")
+    implementation("androidx.navigation:navigation-compose:2.9.5")
     // For navigating between screens in Compose
 
     // --- ViewModel ---
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     // Integrates ViewModel with Compose UI
 
     // --- Coroutines ---
