@@ -35,9 +35,7 @@ object AiModelManager {
         FACE_RESTORATION("GFPGANv1.4.onnx"),
         OBJECT_REMOVAL("lama.onnx"),
         IMAGE_UPSCALER("edsr_onnxsim_2x.onnx"),
-        // MobileSAM is split into two files for separate execution
-        MOBILE_SAM_ENCODER("mobile_sam_encoder.onnx"),
-        MOBILE_SAM_DECODER("mobile_sam_decoder.onnx")
+        
     }
 
     /**
