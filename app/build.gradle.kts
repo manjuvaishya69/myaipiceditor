@@ -57,7 +57,7 @@ dependencies {
     implementation(libs.androidx.material3)                      // Material3 UI components
 
     // --- AI Models ---
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.1")
     // ONNX Runtime → needed to load and run .onnx AI models offline
 
     // --- TensorFlow Lite (matching versions) ---
