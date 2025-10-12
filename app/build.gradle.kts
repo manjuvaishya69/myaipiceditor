@@ -41,6 +41,7 @@ android {
     buildFeatures {
         compose = true
     }
+    
 }
 
 dependencies {
@@ -59,9 +60,15 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.0")
     // ONNX Runtime → needed to load and run .onnx AI models offline
 
+    // TensorFlow Lite
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
+    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
+
     // --- Image Processing ---
     implementation("androidx.exifinterface:exifinterface:1.3.6")
     // Helps handle image rotation/metadata correctly
+
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7")
 
     // --- Permissions ---
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
@@ -82,6 +89,7 @@ dependencies {
     // --- Material Icons ---
     implementation("androidx.compose.material:material-icons-extended")
     // Extra Material icons (not included by default in Compose)
+
 
     // --- Testing ---
     testImplementation(libs.junit)
