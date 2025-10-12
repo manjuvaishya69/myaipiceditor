@@ -8,16 +8,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 
 /**
- * Manages the loading and access of ONNX models using the ONNX Runtime (ORT).
- * It implements lazy loading, caching from assets, thread-safe initialization,
- * and execution provider fallbacks (NNAPI to CPU) for better performance and reliability.
- *
- * NOTE: Segmentation logic now uses the split MOBILE_SAM_ENCODER and MOBILE_SAM_DECODER models.
+ * Manages the loading and access of both ONNX and TFLite models.
+ * Implements lazy loading, caching from assets, thread-safe initialization,
+ * and execution provider fallbacks for better performance and reliability.
  */
 object AiModelManager {
     private const val TAG = "AiModelManager"
@@ -25,24 +29,23 @@ object AiModelManager {
     private const val ASSETS_MODELS_FOLDER = "models"
 
     private lateinit var ortEnvironment: OrtEnvironment
-    private val modelSessions = mutableMapOf<ModelType, OrtSession>()
+    private val onnxSessions = mutableMapOf<ModelType, OrtSession>()
+    private val tfliteInterpreters = mutableMapOf<ModelType, Interpreter>()
     private val loadingMutex = Mutex()
     private var isInitialized = false
     private lateinit var appContext: Context
     private lateinit var cacheDir: File
 
-    enum class ModelType(val fileName: String) {
-        FACE_RESTORATION("GFPGANv1.4.onnx"),
-        OBJECT_REMOVAL("aotgan_float.tflite"),
-        IMAGE_UPSCALER("edsr_onnxsim_2x.onnx"),
-        FOR_SEGMENTATION("FastSamS_float.tflite")
-        
+    enum class ModelType(val fileName: String, val isOnnx: Boolean) {
+        FACE_RESTORATION("GFPGANv1.4.onnx", true),
+        OBJECT_REMOVAL("aotgan_float.tflite", false),
+        IMAGE_UPSCALER("edsr_onnxsim_2x.onnx", true),
+        FOR_SEGMENTATION("FastSamS_float.tflite", false)
     }
 
     /**
-     * Initializes the ONNX Runtime environment and preloads essential models.
+     * Initializes the model manager environment and preloads essential models.
      * This function is thread-safe and idempotent.
-     * Must be called once, typically in the application start-up logic.
      */
     suspend fun initialize(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) {
@@ -53,7 +56,8 @@ object AiModelManager {
         try {
             Log.d(TAG, "Initializing AiModelManager...")
             appContext = context.applicationContext
-            // Initialize the environment once
+
+            // Initialize ONNX Runtime environment once
             ortEnvironment = OrtEnvironment.getEnvironment()
 
             cacheDir = File(appContext.filesDir, MODELS_CACHE_DIR)
@@ -63,39 +67,38 @@ object AiModelManager {
 
             // Preload models for quick initial access
             Log.d(TAG, "Starting model preloading...")
-            // Face Restoration is a good candidate for initial load
-            loadModelSequentially(ModelType.FACE_RESTORATION)
-            // Load both MobileSAM components for segmentation workflow
-            loadModelSequentially(ModelType.MOBILE_SAM_ENCODER)
-            loadModelSequentially(ModelType.MOBILE_SAM_DECODER)
+            loadModelSequentially(ModelType.IMAGE_UPSCALER)
+            loadModelSequentially(ModelType.FOR_SEGMENTATION)
 
             isInitialized = true
-            Log.d(TAG, "AiModelManager initialized (preloaded: Face Restoration, MobileSam Encoder & Decoder)")
+            Log.d(TAG, "AiModelManager initialized successfully")
         } catch (e: Exception) {
             Log.e(TAG, "CRITICAL ERROR initializing AiModelManager: ${e.message}", e)
-            // Re-throw the exception to signal initialization failure
             throw e
         }
     }
 
     /**
      * Loads a specific model, ensuring it's done sequentially and safely.
-     * Copies model from assets to local cache if necessary.
      */
     private suspend fun loadModelSequentially(modelType: ModelType) = withContext(Dispatchers.IO) {
-        // Use mutex to ensure only one thread attempts to load a model at a time
         loadingMutex.withLock {
-            if (modelSessions.containsKey(modelType)) {
-                Log.d(TAG, "Model ${modelType.fileName} already loaded")
+            // Check if already loaded
+            if (modelType.isOnnx && onnxSessions.containsKey(modelType)) {
+                Log.d(TAG, "ONNX Model ${modelType.fileName} already loaded")
+                return@withLock
+            }
+            if (!modelType.isOnnx && tfliteInterpreters.containsKey(modelType)) {
+                Log.d(TAG, "TFLite Model ${modelType.fileName} already loaded")
                 return@withLock
             }
 
             try {
-                Log.d(TAG, "Loading model: ${modelType.fileName}")
+                Log.d(TAG, "Loading model: ${modelType.fileName} (${if (modelType.isOnnx) "ONNX" else "TFLite"})")
 
                 val cachedModelFile = File(cacheDir, modelType.fileName)
 
-                // 1. Copy model from assets to cache if not exists
+                // Copy model from assets to cache if not exists
                 if (!cachedModelFile.exists()) {
                     Log.d(TAG, "Copying ${modelType.fileName} to cache...")
                     copyModelFromAssets(appContext, modelType.fileName, cachedModelFile)
@@ -103,131 +106,124 @@ object AiModelManager {
                     Log.d(TAG, "${modelType.fileName} already cached")
                 }
 
-                // 2. Create the ONNX Runtime session with fallbacks
-                val session = createSessionWithFallback(modelType, cachedModelFile)
-
-                if (session != null) {
-                    modelSessions[modelType] = session
-                    Log.d(TAG, "Model ${modelType.fileName} loaded successfully")
+                // Load based on model type
+                if (modelType.isOnnx) {
+                    val session = createOnnxSession(modelType, cachedModelFile)
+                    if (session != null) {
+                        onnxSessions[modelType] = session
+                        Log.d(TAG, "ONNX Model ${modelType.fileName} loaded successfully")
+                    } else {
+                        throw IllegalStateException("Unable to load ONNX model ${modelType.fileName}")
+                    }
                 } else {
-                    Log.e(TAG, "Failed to create session for ${modelType.fileName}")
-                    throw IllegalStateException("Unable to load model ${modelType.fileName}")
+                    val interpreter = createTfliteInterpreter(modelType, cachedModelFile)
+                    if (interpreter != null) {
+                        tfliteInterpreters[modelType] = interpreter
+                        Log.d(TAG, "TFLite Model ${modelType.fileName} loaded successfully")
+                    } else {
+                        throw IllegalStateException("Unable to load TFLite model ${modelType.fileName}")
+                    }
                 }
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load model ${modelType.fileName}: ${e.message}", e)
-                // Re-throw to indicate the loading failure
                 throw e
             }
         }
     }
 
     /**
-     * Tries to create an optimized session based on the model type, with a conservative CPU fallback.
+     * Creates an ONNX Runtime session with fallback to CPU if NNAPI fails.
      */
-    private fun createSessionWithFallback(modelType: ModelType, modelFile: File): OrtSession? {
-        // Attempt 1: Specific optimized session (NNAPI preference)
+    private fun createOnnxSession(modelType: ModelType, modelFile: File): OrtSession? {
         return try {
-            when (modelType) {
-                ModelType.OBJECT_REMOVAL -> createLamaSession(modelFile)
-                // MobileSAM components are now forced to use the CPU session
-                ModelType.MOBILE_SAM_ENCODER, ModelType.MOBILE_SAM_DECODER -> createMobileSamSession(modelFile, modelType.fileName)
-                else -> createStandardSession(modelType, modelFile)
+            Log.d(TAG, "Creating ONNX session for ${modelType.fileName}")
+
+            val sessionOptions = OrtSession.SessionOptions().apply {
+                when (modelType) {
+                    ModelType.IMAGE_UPSCALER -> {
+                        // EDSR: Moderate optimization
+                        setIntraOpNumThreads(4)
+                        setInterOpNumThreads(2)
+                        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                    }
+                    ModelType.FACE_RESTORATION -> {
+                        // GFPGAN: Conservative for memory
+                        setIntraOpNumThreads(3)
+                        setInterOpNumThreads(2)
+                        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+                    }
+                    else -> {
+                        // Default settings
+                        setIntraOpNumThreads(2)
+                        setInterOpNumThreads(1)
+                        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+                    }
+                }
+
+                // Try NNAPI if available
+                try {
+                    addNnapi()
+                    Log.d(TAG, "NNAPI enabled for ${modelType.fileName}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "NNAPI not available for ${modelType.fileName}, using CPU")
+                }
             }
+
+            ortEnvironment.createSession(modelFile.absolutePath, sessionOptions)
         } catch (e: Exception) {
-            Log.e(TAG, "Primary session creation failed for ${modelType.fileName}, trying conservative CPU fallback: ${e.message}", e)
-            // Attempt 2: Fallback to the most conservative CPU-only settings
-            try {
-                createConservativeSession(modelFile)
-            } catch (fallbackException: Exception) {
-                Log.e(TAG, "Fallback conservative session creation also failed for ${modelType.fileName}: ${fallbackException.message}", fallbackException)
-                null
+            Log.e(TAG, "Failed to create ONNX session for ${modelType.fileName}: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Creates a TFLite interpreter with GPU delegate fallback to CPU.
+     */
+    private fun createTfliteInterpreter(modelType: ModelType, modelFile: File): Interpreter? {
+        return try {
+            Log.d(TAG, "Creating TFLite interpreter for ${modelType.fileName}")
+
+            val modelBuffer = loadModelFile(modelFile)
+            val options = Interpreter.Options().apply {
+                // Set number of threads
+                setNumThreads(4)
+
+                // Try GPU delegate if compatible
+                val compatList = CompatibilityList()
+                if (compatList.isDelegateSupportedOnThisDevice) {
+                    try {
+                        val delegateOptions = compatList.bestOptionsForThisDevice
+                        val gpuDelegate = GpuDelegate(delegateOptions)
+                        addDelegate(gpuDelegate)
+                        Log.d(TAG, "GPU delegate enabled for ${modelType.fileName}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "GPU delegate failed for ${modelType.fileName}, using CPU: ${e.message}")
+                    }
+                } else {
+                    Log.d(TAG, "GPU delegate not supported for ${modelType.fileName}, using CPU")
+                }
             }
+
+            Interpreter(modelBuffer, options)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create TFLite interpreter for ${modelType.fileName}: ${e.message}", e)
+            null
         }
     }
 
     /**
-     * Optimized session creation for the LaMa inpainting model.
-     * Uses conservative CPU settings due to its memory intensity.
+     * Loads a TFLite model file into a MappedByteBuffer.
      */
-    private fun createLamaSession(modelFile: File): OrtSession {
-        Log.d(TAG, "Creating LaMa session with conservative CPU-only settings")
-
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            // LaMa is very memory intensive; keep threads low for stability
-            setIntraOpNumThreads(2)
-            setInterOpNumThreads(1)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
+    private fun loadModelFile(modelFile: File): MappedByteBuffer {
+        FileInputStream(modelFile).use { inputStream ->
+            val fileChannel = inputStream.channel
+            return fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
         }
-
-        return ortEnvironment.createSession(modelFile.absolutePath, sessionOptions)
     }
 
     /**
-     * Specific session creation for the MobileSAM segmentation model components.
-     * Note: This session is explicitly configured to use only the CPU Execution Provider
-     * for stability and predictability, overriding any NNAPI preference.
-     */
-    private fun createMobileSamSession(modelFile: File, modelName: String): OrtSession {
-        Log.d(TAG, "Creating MobileSAM session for $modelName, forcing CPU execution provider.")
-
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            // Balanced thread count for concurrent encoder/decoder use
-            setIntraOpNumThreads(3)
-            setInterOpNumThreads(2)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-
-            // NNAPI is intentionally not added here to force CPU execution.
-        }
-
-        return ortEnvironment.createSession(modelFile.absolutePath, sessionOptions)
-    }
-
-    /**
-     * Standard session creation used for models like GFPGAN and Upscaler.
-     * Aggressive optimization and attempts to use NNAPI.
-     */
-    private fun createStandardSession(modelType: ModelType, modelFile: File): OrtSession {
-        Log.d(TAG, "Creating standard session for ${modelType.fileName}")
-
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(4)
-            setInterOpNumThreads(4)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT) // Use aggressive optimization
-
-            try {
-                addNnapi()
-                Log.d(TAG, "NNAPI execution provider enabled for ${modelType.fileName}")
-            } catch (e: Exception) {
-                Log.w(TAG, "NNAPI not available for ${modelType.fileName}, using CPU: ${e.message}")
-            }
-        }
-
-        return ortEnvironment.createSession(modelFile.absolutePath, sessionOptions)
-    }
-
-    /**
-     * The most conservative session fallback, using minimal threads and no optimization.
-     * Ensures functionality even on low-spec or constrained environments.
-     */
-    private fun createConservativeSession(modelFile: File): OrtSession {
-        Log.w(TAG, "Creating conservative fallback session (CPU, NO_OPT)")
-
-        val sessionOptions = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(1)
-            setInterOpNumThreads(1)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.NO_OPT) // Disable optimization
-            setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL)
-        }
-
-        return ortEnvironment.createSession(modelFile.absolutePath, sessionOptions)
-    }
-
-    /**
-     * Utility function to copy the model file from the app's assets folder to the local cache.
-     * @throws IOException if the file copy fails.
+     * Utility function to copy model from assets to local cache.
      */
     private fun copyModelFromAssets(context: Context, fileName: String, destination: File) {
         try {
@@ -243,29 +239,49 @@ object AiModelManager {
     }
 
     /**
-     * Gets the OrtSession for a given model type, initiating lazy loading if not already loaded.
-     * @throws IllegalStateException if AiModelManager has not been initialized.
-     * @throws IllegalStateException if the model could not be loaded.
+     * Gets the OrtSession for a given ONNX model type.
      */
     suspend fun getSession(modelType: ModelType): OrtSession {
         if (!isInitialized) {
             throw IllegalStateException("AiModelManager not initialized. Call initialize() first.")
         }
 
-        // Check outside the lock for fast access
-        if (!modelSessions.containsKey(modelType)) {
-            Log.d(TAG, "Lazy loading ${modelType.fileName} on first use...")
-            // Call the loading function which handles the internal lock
+        if (!modelType.isOnnx) {
+            throw IllegalArgumentException("${modelType.fileName} is not an ONNX model. Use getInterpreter() instead.")
+        }
+
+        if (!onnxSessions.containsKey(modelType)) {
+            Log.d(TAG, "Lazy loading ${modelType.fileName}...")
             loadModelSequentially(modelType)
         }
 
-        return modelSessions[modelType]
-            ?: throw IllegalStateException("Model ${modelType.fileName} could not be loaded after lazy attempt")
+        return onnxSessions[modelType]
+            ?: throw IllegalStateException("Model ${modelType.fileName} could not be loaded")
+    }
+
+    /**
+     * Gets the Interpreter for a given TFLite model type.
+     */
+    suspend fun getInterpreter(modelType: ModelType): Interpreter {
+        if (!isInitialized) {
+            throw IllegalStateException("AiModelManager not initialized. Call initialize() first.")
+        }
+
+        if (modelType.isOnnx) {
+            throw IllegalArgumentException("${modelType.fileName} is not a TFLite model. Use getSession() instead.")
+        }
+
+        if (!tfliteInterpreters.containsKey(modelType)) {
+            Log.d(TAG, "Lazy loading ${modelType.fileName}...")
+            loadModelSequentially(modelType)
+        }
+
+        return tfliteInterpreters[modelType]
+            ?: throw IllegalStateException("Model ${modelType.fileName} could not be loaded")
     }
 
     /**
      * Gets the single OrtEnvironment instance.
-     * @throws IllegalStateException if AiModelManager has not been initialized.
      */
     fun getEnvironment(): OrtEnvironment {
         if (!isInitialized) {
@@ -278,7 +294,11 @@ object AiModelManager {
      * Checks if a model is currently loaded.
      */
     fun isModelLoaded(modelType: ModelType): Boolean {
-        return modelSessions.containsKey(modelType)
+        return if (modelType.isOnnx) {
+            onnxSessions.containsKey(modelType)
+        } else {
+            tfliteInterpreters.containsKey(modelType)
+        }
     }
 
     /**
@@ -286,19 +306,27 @@ object AiModelManager {
      */
     fun cleanup() {
         Log.d(TAG, "Cleaning up AiModelManager...")
-        // Close all sessions
-        modelSessions.values.forEach { session ->
+
+        // Close all ONNX sessions
+        onnxSessions.values.forEach { session ->
             try {
                 session.close()
             } catch (e: Exception) {
-                Log.e(TAG, "Error closing session: ${e.message}", e)
+                Log.e(TAG, "Error closing ONNX session: ${e.message}", e)
             }
         }
-        modelSessions.clear()
+        onnxSessions.clear()
 
-        // The OrtEnvironment is a singleton and is often shared across multiple components.
-        // It's generally safer to let the app/framework handle its destruction unless
-        // explicitly required, but we reset the state flags.
+        // Close all TFLite interpreters
+        tfliteInterpreters.values.forEach { interpreter ->
+            try {
+                interpreter.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing TFLite interpreter: ${e.message}", e)
+            }
+        }
+        tfliteInterpreters.clear()
+
         isInitialized = false
         Log.d(TAG, "AiModelManager cleaned up.")
     }
