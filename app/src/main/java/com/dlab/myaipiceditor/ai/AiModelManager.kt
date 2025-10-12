@@ -35,6 +35,7 @@ object AiModelManager {
         FACE_RESTORATION("GFPGANv1.4.onnx"),
         OBJECT_REMOVAL("aotgan_float.tflite"),
         IMAGE_UPSCALER("edsr_onnxsim_2x.onnx"),
+        FOR_SEGMENTATION("FastSamS_float.tflite")
         
     }
 
