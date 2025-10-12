@@ -296,8 +296,8 @@ object SmartMaskSnap {
             return segmentation
         }
 
-        // Expand bounds slightly (20 pixels instead of 100 for more precision)
-        val expandedBounds = expandBounds(bounds, width, height, 20)
+        // Expand bounds slightly (5 pixels for minimal expansion)
+        val expandedBounds = expandBounds(bounds, width, height, 5)
 
         Log.d(TAG, "Rough mask bounds: [${bounds[0]}, ${bounds[1]}, ${bounds[2]}, ${bounds[3]}]")
         Log.d(TAG, "Expanded bounds: [${expandedBounds[0]}, ${expandedBounds[1]}, ${expandedBounds[2]}, ${expandedBounds[3]}]")
@@ -317,8 +317,8 @@ object SmartMaskSnap {
                     // Inside rough mask area - use intersection of rough and segmentation
                     if (segValue > 128) segValue else 0
                 } else {
-                    // Inside expanded bounds but outside rough mask - be more conservative
-                    if (segValue > 200) segValue else 0
+                    // Outside rough mask - ignore completely
+                    0
                 }
 
                 resultPixels[idx] = Color.argb(255, finalValue, finalValue, finalValue)
