@@ -44,19 +44,36 @@ object SmartMaskSnap {
             val inputBuffer = preprocessImage(resized)
 
             // Prepare output buffers
-            // FastSAM typically outputs: [1, num_masks, H, W] masks
-            // Output shape depends on your specific FastSAM export
-            val outputShape = interpreter.getOutputTensor(0).shape()
-            Log.d(TAG, "Output shape: ${outputShape.contentToString()}")
+            // FastSAM has multiple outputs, we need the mask output (usually output 1)
+            // Output 0: [1, 8400, 4] - bounding boxes
+            // Output 1: [1, 32, H, W] - mask prototypes (what we need)
 
-            val outputBuffer = ByteBuffer.allocateDirect(
-                outputShape[0] * outputShape[1] * outputShape[2] * outputShape[3] * 4
-            ).apply {
+            // Log all outputs to understand the model
+            for (i in 0 until interpreter.outputTensorCount) {
+                val shape = interpreter.getOutputTensor(i).shape()
+                Log.d(TAG, "Output $i shape: ${shape.contentToString()}")
+            }
+
+            // Get the mask output (typically output index 1)
+            val maskOutputIndex = if (interpreter.outputTensorCount > 1) 1 else 0
+            val outputShape = interpreter.getOutputTensor(maskOutputIndex).shape()
+            Log.d(TAG, "Using output $maskOutputIndex with shape: ${outputShape.contentToString()}")
+
+            // Calculate buffer size based on actual dimensions
+            var bufferSize = 4 // start with float size
+            for (dim in outputShape) {
+                bufferSize *= dim
+            }
+
+            val outputBuffer = ByteBuffer.allocateDirect(bufferSize).apply {
                 order(ByteOrder.nativeOrder())
             }
 
-            // Run inference
-            interpreter.run(inputBuffer, outputBuffer)
+            // Run inference with proper output mapping
+            val outputs = mutableMapOf<Int, Any>()
+            outputs[maskOutputIndex] = outputBuffer
+
+            interpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputs)
             outputBuffer.rewind()
 
             // Post-process output
@@ -176,10 +193,17 @@ object SmartMaskSnap {
         outputShape: IntArray,
         bbox: FloatArray
     ): Bitmap {
-        // FastSAM output is typically [1, N, H, W] where N is number of masks
-        val numMasks = outputShape[1]
-        val height = outputShape[2]
-        val width = outputShape[3]
+        // Handle different output shapes
+        // Common formats: [1, N, H, W] or [N, H, W] or [H, W]
+        val (numMasks, height, width) = when (outputShape.size) {
+            4 -> Triple(outputShape[1], outputShape[2], outputShape[3])  // [1, N, H, W]
+            3 -> Triple(outputShape[0], outputShape[1], outputShape[2])  // [N, H, W]
+            2 -> Triple(1, outputShape[0], outputShape[1])               // [H, W]
+            else -> {
+                Log.e(TAG, "Unexpected output shape: ${outputShape.contentToString()}")
+                return Bitmap.createBitmap(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, Bitmap.Config.ARGB_8888)
+            }
+        }
 
         Log.d(TAG, "Processing $numMasks masks of size ${width}x${height}")
 
