@@ -2,12 +2,14 @@ package com.dlab.myaipiceditor.viewmodel
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.graphics.Typeface
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dlab.myaipiceditor.ai.FaceRestoration
 import com.dlab.myaipiceditor.ai.ImageUpscaler
-import com.dlab.myaipiceditor.ai.MaskRefinement
 import com.dlab.myaipiceditor.ai.ObjectRemoval
 import com.dlab.myaipiceditor.ai.PhotoEnhancement
 import com.dlab.myaipiceditor.ai.SmartMaskSnap
@@ -218,8 +220,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 AiModelManager.initialize(getApplication())
 
+                // Create rough mask from strokes directly here
                 val roughMask = withContext(Dispatchers.Default) {
-                    MaskRefinement.createMaskFromStrokes(
+                    createMaskFromStrokes(
                         currentImage.width,
                         currentImage.height,
                         strokes
@@ -256,6 +259,54 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
         }
+    }
+
+    /**
+     * Creates a grayscale mask bitmap from brush strokes.
+     * Moved from MaskRefinement to keep it local.
+     */
+    private fun createMaskFromStrokes(
+        width: Int,
+        height: Int,
+        strokes: List<BrushStroke>
+    ): Bitmap {
+        val maskBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(maskBitmap)
+        canvas.drawColor(Color.BLACK) // Start with black (empty) mask
+
+        val paint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            isAntiAlias = true
+        }
+
+        strokes.forEach { stroke ->
+            paint.color = if (stroke.isEraser) {
+                Color.BLACK
+            } else {
+                Color.WHITE
+            }
+            paint.strokeWidth = stroke.brushSize * 2f
+
+            if (stroke.points.size > 1) {
+                val path = Path()
+                val firstPoint = stroke.points.first()
+
+                // Scale normalized points [0, 1] to pixel coordinates
+                path.moveTo(firstPoint.x * width, firstPoint.y * height)
+
+                for (i in 1 until stroke.points.size) {
+                    val point = stroke.points[i]
+                    path.lineTo(point.x * width, point.y * height)
+                }
+
+                canvas.drawPath(path, paint)
+            }
+        }
+
+        return maskBitmap
     }
 
     private fun undoRemovalStroke() {
@@ -376,7 +427,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
             try {
                 val result = withContext(Dispatchers.IO) {
-                    ObjectRemoval.removeObject(getApplication(), currentImage, refinedMask)
+                    ObjectRemoval.removeObject(getApplication(), currentImage, refinedMask) { progress ->
+                        // Optional: update progress in state
+                    }
                 }
 
                 _state.value = _state.value.copy(
@@ -437,16 +490,20 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
             try {
                 val mask = withContext(Dispatchers.Default) {
-                    ObjectRemoval.createMaskFromStrokes(
-                        strokes,
+                    createMaskFromStrokes(
                         currentImage.width,
-                        currentImage.height
+                        currentImage.height,
+                        strokes
                     )
                 }
 
                 val result = withContext(Dispatchers.Default) {
-                    ObjectRemoval.removeObject(getApplication(), currentImage, mask)
+                    ObjectRemoval.removeObject(getApplication(), currentImage, mask) { progress ->
+                        // Optional: update progress
+                    }
                 }
+
+                mask.recycle()
 
                 _state.value = _state.value.copy(
                     currentImage = result,
