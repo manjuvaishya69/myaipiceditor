@@ -189,20 +189,30 @@ object AiModelManager {
                 // Set number of threads
                 setNumThreads(4)
 
-                // Try GPU delegate if compatible
-                val compatList = CompatibilityList()
-                if (compatList.isDelegateSupportedOnThisDevice) {
-                    try {
-                        val delegateOptions = compatList.bestOptionsForThisDevice
-                        val gpuDelegate = GpuDelegate(delegateOptions)
-                        addDelegate(gpuDelegate)
-                        Log.d(TAG, "GPU delegate enabled for ${modelType.fileName}")
-                    } catch (e: Exception) {
-                        Log.w(TAG, "GPU delegate failed for ${modelType.fileName}, using CPU: ${e.message}")
-                    }
+                // ⬇️ FORCED CPU FALLBACK FOR OBJECT_REMOVAL (aotgan_float.tflite) ⬇️
+                // The log indicates STRIDED_SLICE with reverse slices is not supported by GPU delegate.
+                // We will skip GPU delegate attempt for this specific model to prevent loading failure.
+                if (modelType == ModelType.OBJECT_REMOVAL) {
+                    Log.d(TAG, "Forcing CPU for ${modelType.fileName} due to GPU delegate incompatibility.")
+                    // No delegate is added, CPU will be used as default.
                 } else {
-                    Log.d(TAG, "GPU delegate not supported for ${modelType.fileName}, using CPU")
+                    // Original logic for other TFLite models
+                    // Try GPU delegate if compatible
+                    val compatList = CompatibilityList()
+                    if (compatList.isDelegateSupportedOnThisDevice) {
+                        try {
+                            val delegateOptions = compatList.bestOptionsForThisDevice
+                            val gpuDelegate = GpuDelegate(delegateOptions)
+                            addDelegate(gpuDelegate)
+                            Log.d(TAG, "GPU delegate enabled for ${modelType.fileName}")
+                        } catch (e: Exception) {
+                            Log.w(TAG, "GPU delegate failed for ${modelType.fileName}, using CPU: ${e.message}")
+                        }
+                    } else {
+                        Log.d(TAG, "GPU delegate not supported for ${modelType.fileName}, using CPU")
+                    }
                 }
+                // ⬆️ END OF CPU FALLBACK ADDITION ⬆️
             }
 
             Interpreter(modelBuffer, options)
