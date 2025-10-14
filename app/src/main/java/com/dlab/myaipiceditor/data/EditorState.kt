@@ -28,7 +28,15 @@ data class EditorState(
     val objectRemovalState: ObjectRemovalState = ObjectRemovalState(),
     val showingSaveDialog: Boolean = false,
     val isEnhancingPhoto: Boolean = false,
-    val photoEnhancementState: PhotoEnhancementState = PhotoEnhancementState()
+    val photoEnhancementState: PhotoEnhancementState = PhotoEnhancementState(),
+    val showingToolsSheet: Boolean = false,
+    val isFilteringImage: Boolean = false,
+    val isRetouchingImage: Boolean = false,
+    val isDrawing: Boolean = false,
+    val isAddingPhoto: Boolean = false,
+    val isAddingLensFlare: Boolean = false,
+    val showingCollageScreen: Boolean = false,
+    val showingImageToTextScreen: Boolean = false
 )
 
 data class TextPosition(
@@ -86,4 +94,25 @@ sealed class EditorAction {
     object BackToStart : EditorAction()
     object ShowSaveDialog : EditorAction()
     object HideSaveDialog : EditorAction()
+    object ShowToolsSheet : EditorAction()
+    object HideToolsSheet : EditorAction()
+    object StartFilters : EditorAction()
+    object CancelFilters : EditorAction()
+    object ConfirmFilters : EditorAction()
+    object StartRetouch : EditorAction()
+    object CancelRetouch : EditorAction()
+    object ConfirmRetouch : EditorAction()
+    object StartDraw : EditorAction()
+    object CancelDraw : EditorAction()
+    object ConfirmDraw : EditorAction()
+    object StartAddPhoto : EditorAction()
+    object CancelAddPhoto : EditorAction()
+    object ConfirmAddPhoto : EditorAction()
+    object StartLensFlare : EditorAction()
+    object CancelLensFlare : EditorAction()
+    object ConfirmLensFlare : EditorAction()
+    object ShowMakeCollage : EditorAction()
+    object HideMakeCollage : EditorAction()
+    object ShowImageToText : EditorAction()
+    object HideImageToText : EditorAction()
 }

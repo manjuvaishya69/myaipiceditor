@@ -44,20 +44,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dlab.myaipiceditor.data.EditorAction
 import com.dlab.myaipiceditor.ui.theme.MyAiPicEditorTheme
-import com.dlab.myaipiceditor.ui.AdjustScreen
-import com.dlab.myaipiceditor.ui.AiPhotoEnhancementScreen
-import com.dlab.myaipiceditor.ui.CropScreen
-import com.dlab.myaipiceditor.ui.ObjectRemovalScreen
-import com.dlab.myaipiceditor.ui.SaveConfig
-import com.dlab.myaipiceditor.ui.SaveScreen
-import com.dlab.myaipiceditor.ui.TextEditorScreen
-import com.dlab.myaipiceditor.ui.TextStylingScreen
+import com.dlab.myaipiceditor.ui.*
 import com.dlab.myaipiceditor.viewmodel.EditorViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -118,21 +112,29 @@ class MainActivity : ComponentActivity() {
                     permissions.launchMultiplePermissionRequest()
                 }
 
-                BackHandler(enabled = state.currentImage != null) {
+                BackHandler(enabled = state.currentImage != null || state.showingCollageScreen || state.showingImageToTextScreen) {
                     when {
                         state.showingSaveDialog -> viewModel.handleAction(EditorAction.HideSaveDialog)
+                        state.showingToolsSheet -> viewModel.handleAction(EditorAction.HideToolsSheet)
                         state.isCropping -> viewModel.handleAction(EditorAction.CancelCrop)
                         state.isAddingText -> viewModel.handleAction(EditorAction.CancelAddText)
                         state.isStylingText -> viewModel.handleAction(EditorAction.CancelTextStyling)
                         state.isAdjusting -> viewModel.handleAction(EditorAction.CancelAdjust)
                         state.isRemovingObject -> viewModel.handleAction(EditorAction.CancelObjectRemoval)
                         state.isEnhancingPhoto -> viewModel.handleAction(EditorAction.CancelPhotoEnhancement)
+                        state.isFilteringImage -> viewModel.handleAction(EditorAction.CancelFilters)
+                        state.isRetouchingImage -> viewModel.handleAction(EditorAction.CancelRetouch)
+                        state.isDrawing -> viewModel.handleAction(EditorAction.CancelDraw)
+                        state.isAddingPhoto -> viewModel.handleAction(EditorAction.CancelAddPhoto)
+                        state.isAddingLensFlare -> viewModel.handleAction(EditorAction.CancelLensFlare)
+                        state.showingCollageScreen -> viewModel.handleAction(EditorAction.HideMakeCollage)
+                        state.showingImageToTextScreen -> viewModel.handleAction(EditorAction.HideImageToText)
                         else -> viewModel.handleAction(EditorAction.BackToStart)
                     }
                 }
 
-                // Show first screen if no image is loaded, otherwise show editor
-                if (state.currentImage == null) {
+                // Show first screen if no image is loaded and not on collage/ocr screens
+                if (state.currentImage == null && !state.showingCollageScreen && !state.showingImageToTextScreen) {
                     FirstScreen(
                         onSelectFromGallery = {
                             if (permissions.allPermissionsGranted) {
@@ -148,9 +150,15 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 permissions.launchMultiplePermissionRequest()
                             }
+                        },
+                        onMakeCollage = {
+                            viewModel.handleAction(EditorAction.ShowMakeCollage)
+                        },
+                        onImageToText = {
+                            viewModel.handleAction(EditorAction.ShowImageToText)
                         }
                     )
-                } else {
+                } else if (state.currentImage != null) {
                     EditorScreen(
                         state = state,
                         onActionClick = { action -> viewModel.handleAction(action) },
@@ -328,6 +336,65 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
+                // Show Filters screen
+                if (state.isFilteringImage && state.currentImage != null) {
+                    FiltersScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmFilters) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelFilters) }
+                    )
+                }
+
+                // Show Retouch screen
+                if (state.isRetouchingImage && state.currentImage != null) {
+                    RetouchScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmRetouch) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelRetouch) }
+                    )
+                }
+
+                // Show Draw screen
+                if (state.isDrawing && state.currentImage != null) {
+                    DrawScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmDraw) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelDraw) }
+                    )
+                }
+
+                // Show Add Photo screen
+                if (state.isAddingPhoto && state.currentImage != null) {
+                    AddPhotoScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmAddPhoto) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelAddPhoto) }
+                    )
+                }
+
+                // Show Lens Flare screen
+                if (state.isAddingLensFlare && state.currentImage != null) {
+                    LensFlareScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmLensFlare) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelLensFlare) }
+                    )
+                }
+
+                // Show Make Collage screen
+                if (state.showingCollageScreen) {
+                    MakeCollageScreen(
+                        onBack = { viewModel.handleAction(EditorAction.HideMakeCollage) }
+                    )
+                }
+
+                // Show Image to Text screen
+                if (state.showingImageToTextScreen) {
+                    ImageToTextScreen(
+                        onBack = { viewModel.handleAction(EditorAction.HideImageToText) }
+                    )
+                }
+
             }
         }
     }
@@ -487,6 +554,8 @@ class MainActivity : ComponentActivity() {
 fun FirstScreen(
     onSelectFromGallery: () -> Unit,
     onTakePhoto: () -> Unit,
+    onMakeCollage: () -> Unit,
+    onImageToText: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -555,6 +624,48 @@ fun FirstScreen(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+
+            // Make Collage Button
+            OutlinedButton(
+                onClick = onMakeCollage,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GridOn,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Make Collage",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            // Image to Text Button
+            OutlinedButton(
+                onClick = onImageToText,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.TextFields,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Image to Text (OCR)",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }
@@ -591,6 +702,11 @@ fun EditorScreen(
                         "ai_photo_enhancement" -> onActionClick(EditorAction.StartPhotoEnhancement)
                         "ai_face_restoration" -> onActionClick(EditorAction.RestoreFace)
                         "ai_upscaler" -> onActionClick(EditorAction.UpscaleImage)
+                        "filters" -> onActionClick(EditorAction.StartFilters)
+                        "retouch" -> onActionClick(EditorAction.StartRetouch)
+                        "draw" -> onActionClick(EditorAction.StartDraw)
+                        "add_photo" -> onActionClick(EditorAction.StartAddPhoto)
+                        "lens_flare" -> onActionClick(EditorAction.StartLensFlare)
                     }
                 },
                 isProcessing = state.isProcessing
@@ -688,22 +804,14 @@ fun EditorTopBar(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorBottomToolbar(
     onToolClick: (String) -> Unit,
     isProcessing: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val tools = listOf(
-        ToolItem("crop", "Crop", Icons.Default.Crop),
-        ToolItem("rotate", "Rotate", Icons.AutoMirrored.Filled.RotateRight),
-        ToolItem("text", "Text", Icons.Default.TextFields),
-        ToolItem("adjust", "Adjust", Icons.Default.Tune),
-        ToolItem("ai_object_removal", "AI Object Removal", Icons.Default.AutoFixHigh),
-        ToolItem("ai_photo_enhancement", "AI Photo Enhancement", Icons.Default.AutoAwesome),
-        ToolItem("ai_face_restoration", "AI Face Restoration", Icons.Default.Face),
-        ToolItem("ai_upscaler", "AI Photo Upscaler", Icons.Default.ZoomIn)
-    )
+    var showToolsSheet by remember { mutableStateOf(false) }
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -715,15 +823,199 @@ fun EditorBottomToolbar(
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            tools.forEach { tool ->
-                ToolButton(
+            // Tools button - opens bottom sheet with grid
+            ToolButton(
+                tool = ToolItem("tools", "Tools", Icons.Default.Apps),
+                onClick = { showToolsSheet = true },
+                enabled = !isProcessing
+            )
+
+            // Additional buttons outside of grid
+            ToolButton(
+                tool = ToolItem("filters", "Filters", Icons.Default.FilterVintage),
+                onClick = { onToolClick("filters") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("retouch", "Retouch", Icons.Default.Healing),
+                onClick = { onToolClick("retouch") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("draw", "Draw", Icons.Default.Brush),
+                onClick = { onToolClick("draw") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("add_photo", "Add Photo", Icons.Default.AddPhotoAlternate),
+                onClick = { onToolClick("add_photo") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("lens_flare", "Lens Flare", Icons.Default.Flare),
+                onClick = { onToolClick("lens_flare") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("text", "Text", Icons.Default.TextFields),
+                onClick = { onToolClick("text") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("adjust", "Adjust", Icons.Default.Tune),
+                onClick = { onToolClick("adjust") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("ai_object_removal", "AI Remove", Icons.Default.AutoFixHigh),
+                onClick = { onToolClick("ai_object_removal") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("ai_photo_enhancement", "AI Enhance", Icons.Default.AutoAwesome),
+                onClick = { onToolClick("ai_photo_enhancement") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("ai_face_restoration", "AI Face", Icons.Default.Face),
+                onClick = { onToolClick("ai_face_restoration") },
+                enabled = !isProcessing
+            )
+
+            ToolButton(
+                tool = ToolItem("ai_upscaler", "AI Upscale", Icons.Default.ZoomIn),
+                onClick = { onToolClick("ai_upscaler") },
+                enabled = !isProcessing
+            )
+        }
+    }
+
+    // Tools Grid Bottom Sheet
+    if (showToolsSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showToolsSheet = false }
+        ) {
+            ToolsGridContent(
+                onToolClick = { toolId ->
+                    showToolsSheet = false
+                    onToolClick(toolId)
+                },
+                isProcessing = isProcessing
+            )
+        }
+    }
+}
+
+@Composable
+fun ToolsGridContent(
+    onToolClick: (String) -> Unit,
+    isProcessing: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val gridTools = listOf(
+        ToolItem("crop", "Crop", Icons.Default.Crop),
+        ToolItem("rotate", "Rotate", Icons.AutoMirrored.Filled.RotateRight),
+        ToolItem("ai_object_removal", "AI Remove Object", Icons.Default.AutoFixHigh),
+        ToolItem("ai_photo_enhancement", "AI Enhance Photo", Icons.Default.AutoAwesome),
+        ToolItem("ai_face_restoration", "AI Restore Face", Icons.Default.Face),
+        ToolItem("ai_upscaler", "AI Upscale Image", Icons.Default.ZoomIn),
+        ToolItem("adjust", "Adjust", Icons.Default.Tune),
+        ToolItem("text", "Add Text", Icons.Default.TextFields)
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Text(
+            text = "Tools",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+            columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.heightIn(max = 400.dp)
+        ) {
+            items(gridTools.size) { index ->
+                val tool = gridTools[index]
+                GridToolButton(
                     tool = tool,
                     onClick = { onToolClick(tool.id) },
                     enabled = !isProcessing
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun GridToolButton(
+    tool: ToolItem,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        ),
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp)
+        ) {
+            Icon(
+                imageVector = tool.icon,
+                contentDescription = tool.name,
+                modifier = Modifier.size(28.dp),
+                tint = if (enabled) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.38f)
+                }
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = tool.name,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Medium,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.38f)
+                },
+                textAlign = TextAlign.Center,
+                maxLines = 2
+            )
         }
     }
 }
