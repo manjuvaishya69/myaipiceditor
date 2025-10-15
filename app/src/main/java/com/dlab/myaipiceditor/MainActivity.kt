@@ -127,6 +127,12 @@ class MainActivity : ComponentActivity() {
                         state.isDrawing -> viewModel.handleAction(EditorAction.CancelDraw)
                         state.isAddingPhoto -> viewModel.handleAction(EditorAction.CancelAddPhoto)
                         state.isAddingLensFlare -> viewModel.handleAction(EditorAction.CancelLensFlare)
+                        state.isFreeCropping -> viewModel.handleAction(EditorAction.CancelFreeCrop)
+                        state.isShapeCropping -> viewModel.handleAction(EditorAction.CancelShapeCrop)
+                        state.isStretching -> viewModel.handleAction(EditorAction.CancelStretch)
+                        state.isAdjustingCurves -> viewModel.handleAction(EditorAction.CancelCurves)
+                        state.isApplyingTiltShift -> viewModel.handleAction(EditorAction.CancelTiltShift)
+                        state.isFlipRotating -> viewModel.handleAction(EditorAction.CancelFlipRotate)
                         state.showingCollageScreen -> viewModel.handleAction(EditorAction.HideMakeCollage)
                         state.showingImageToTextScreen -> viewModel.handleAction(EditorAction.HideImageToText)
                         else -> viewModel.handleAction(EditorAction.BackToStart)
@@ -392,6 +398,60 @@ class MainActivity : ComponentActivity() {
                 if (state.showingImageToTextScreen) {
                     ImageToTextScreen(
                         onBack = { viewModel.handleAction(EditorAction.HideImageToText) }
+                    )
+                }
+
+                // Show Free Crop screen
+                if (state.isFreeCropping && state.currentImage != null) {
+                    FreeCropScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmFreeCrop) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelFreeCrop) }
+                    )
+                }
+
+                // Show Shape Crop screen
+                if (state.isShapeCropping && state.currentImage != null) {
+                    ShapeCropScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmShapeCrop) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelShapeCrop) }
+                    )
+                }
+
+                // Show Stretch screen
+                if (state.isStretching && state.currentImage != null) {
+                    StretchScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmStretch) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelStretch) }
+                    )
+                }
+
+                // Show Curves screen
+                if (state.isAdjustingCurves && state.currentImage != null) {
+                    CurvesScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmCurves) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelCurves) }
+                    )
+                }
+
+                // Show Tilt Shift screen
+                if (state.isApplyingTiltShift && state.currentImage != null) {
+                    TiltShiftScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmTiltShift) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelTiltShift) }
+                    )
+                }
+
+                // Show Flip/Rotate screen
+                if (state.isFlipRotating && state.currentImage != null) {
+                    FlipRotateScreen(
+                        bitmap = state.currentImage,
+                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmFlipRotate) },
+                        onCancel = { viewModel.handleAction(EditorAction.CancelFlipRotate) }
                     )
                 }
 
@@ -707,6 +767,12 @@ fun EditorScreen(
                         "draw" -> onActionClick(EditorAction.StartDraw)
                         "add_photo" -> onActionClick(EditorAction.StartAddPhoto)
                         "lens_flare" -> onActionClick(EditorAction.StartLensFlare)
+                        "free_crop" -> onActionClick(EditorAction.StartFreeCrop)
+                        "shape_crop" -> onActionClick(EditorAction.StartShapeCrop)
+                        "stretch" -> onActionClick(EditorAction.StartStretch)
+                        "curves" -> onActionClick(EditorAction.StartCurves)
+                        "tilt_shift" -> onActionClick(EditorAction.StartTiltShift)
+                        "flip_rotate" -> onActionClick(EditorAction.StartFlipRotate)
                     }
                 },
                 isProcessing = state.isProcessing
@@ -926,12 +992,12 @@ fun ToolsGridContent(
     val gridTools = listOf(
         ToolItem("crop", "Crop", Icons.Default.Crop),
         ToolItem("rotate", "Rotate", Icons.AutoMirrored.Filled.RotateRight),
-        ToolItem("ai_object_removal", "AI Remove Object", Icons.Default.AutoFixHigh),
-        ToolItem("ai_photo_enhancement", "AI Enhance Photo", Icons.Default.AutoAwesome),
-        ToolItem("ai_face_restoration", "AI Restore Face", Icons.Default.Face),
-        ToolItem("ai_upscaler", "AI Upscale Image", Icons.Default.ZoomIn),
-        ToolItem("adjust", "Adjust", Icons.Default.Tune),
-        ToolItem("text", "Add Text", Icons.Default.TextFields)
+        ToolItem("free_crop", "Free Crop", Icons.Default.CropFree),
+        ToolItem("shape_crop", "Shape Crop", Icons.Default.Category),
+        ToolItem("stretch", "Stretch", Icons.Default.OpenInFull),
+        ToolItem("curves", "Curves", Icons.Default.Timeline),
+        ToolItem("tilt_shift", "Tilt Shift", Icons.Default.Gradient),
+        ToolItem("flip_rotate", "Flip/Rotate", Icons.Default.FlipCameraAndroid)
     )
 
     Column(

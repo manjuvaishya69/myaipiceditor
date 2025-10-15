@@ -36,7 +36,13 @@ data class EditorState(
     val isAddingPhoto: Boolean = false,
     val isAddingLensFlare: Boolean = false,
     val showingCollageScreen: Boolean = false,
-    val showingImageToTextScreen: Boolean = false
+    val showingImageToTextScreen: Boolean = false,
+    val isFreeCropping: Boolean = false,
+    val isShapeCropping: Boolean = false,
+    val isStretching: Boolean = false,
+    val isAdjustingCurves: Boolean = false,
+    val isApplyingTiltShift: Boolean = false,
+    val isFlipRotating: Boolean = false
 )
 
 data class TextPosition(
@@ -115,4 +121,22 @@ sealed class EditorAction {
     object HideMakeCollage : EditorAction()
     object ShowImageToText : EditorAction()
     object HideImageToText : EditorAction()
+    object StartFreeCrop : EditorAction()
+    object CancelFreeCrop : EditorAction()
+    object ConfirmFreeCrop : EditorAction()
+    object StartShapeCrop : EditorAction()
+    object CancelShapeCrop : EditorAction()
+    object ConfirmShapeCrop : EditorAction()
+    object StartStretch : EditorAction()
+    object CancelStretch : EditorAction()
+    object ConfirmStretch : EditorAction()
+    object StartCurves : EditorAction()
+    object CancelCurves : EditorAction()
+    object ConfirmCurves : EditorAction()
+    object StartTiltShift : EditorAction()
+    object CancelTiltShift : EditorAction()
+    object ConfirmTiltShift : EditorAction()
+    object StartFlipRotate : EditorAction()
+    object CancelFlipRotate : EditorAction()
+    object ConfirmFlipRotate : EditorAction()
 }
