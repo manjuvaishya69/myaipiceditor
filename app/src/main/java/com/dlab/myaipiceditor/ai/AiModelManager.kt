@@ -37,10 +37,10 @@ object AiModelManager {
     private lateinit var cacheDir: File
 
     enum class ModelType(val fileName: String, val isOnnx: Boolean) {
-        FACE_RESTORATION("GFPGANv1.4.onnx", true),
-        OBJECT_REMOVAL("aotgan_float.tflite", false),
-        IMAGE_UPSCALER("edsr_onnxsim_2x.onnx", true),
-        FOR_SEGMENTATION("FastSamS_float.tflite", false)
+        FACE_RESTORATION("Real_ESRGAN_x4plus_float.tflite", false),
+        OBJECT_REMOVAL("lama_fp32.onnx", true),
+        IMAGE_UPSCALER("Real_ESRGAN_x4plus_float.tflite", false),
+        FOR_SEGMENTATION("deeplabv3_257_mv_gpu.tflite", false)
     }
 
     /**
