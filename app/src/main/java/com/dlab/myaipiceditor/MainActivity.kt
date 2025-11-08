@@ -203,6 +203,7 @@ class MainActivity : ComponentActivity() {
                 // Show text editor screen when adding text
                 if (state.isAddingText) {
                     TextEditorScreen(
+                        bitmap = state.currentImage, // pass the photo here
                         onTextConfirm = { text ->
                             viewModel.handleAction(EditorAction.ConfirmText(text))
                         },
@@ -346,7 +347,9 @@ class MainActivity : ComponentActivity() {
                 if (state.isFilteringImage && state.currentImage != null) {
                     FiltersScreen(
                         bitmap = state.currentImage,
-                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmFilters) },
+                        onConfirm = { filteredBitmap ->
+                            viewModel.handleAction(EditorAction.ConfirmFilters(filteredBitmap))
+                        },
                         onCancel = { viewModel.handleAction(EditorAction.CancelFilters) }
                     )
                 }
@@ -355,8 +358,12 @@ class MainActivity : ComponentActivity() {
                 if (state.isRetouchingImage && state.currentImage != null) {
                     RetouchScreen(
                         bitmap = state.currentImage,
-                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmRetouch) },
-                        onCancel = { viewModel.handleAction(EditorAction.CancelRetouch) }
+                        onConfirm = { retouchedBitmap ->  // ✅ Now receives the bitmap parameter
+                            viewModel.handleAction(EditorAction.ConfirmRetouch(retouchedBitmap))
+                        },
+                        onCancel = {
+                            viewModel.handleAction(EditorAction.CancelRetouch)
+                        }
                     )
                 }
 
@@ -414,8 +421,12 @@ class MainActivity : ComponentActivity() {
                 if (state.isShapeCropping && state.currentImage != null) {
                     ShapeCropScreen(
                         bitmap = state.currentImage,
-                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmShapeCrop) },
-                        onCancel = { viewModel.handleAction(EditorAction.CancelShapeCrop) }
+                        onConfirm = { croppedBitmap ->  // UPDATE: Now receives the bitmap
+                            viewModel.handleAction(EditorAction.ConfirmShapeCrop(croppedBitmap))
+                        },
+                        onCancel = {
+                            viewModel.handleAction(EditorAction.CancelShapeCrop)
+                        }
                     )
                 }
 
@@ -432,7 +443,9 @@ class MainActivity : ComponentActivity() {
                 if (state.isAdjustingCurves && state.currentImage != null) {
                     CurvesScreen(
                         bitmap = state.currentImage,
-                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmCurves) },
+                        onConfirm = { processedBitmap ->
+                            viewModel.handleAction(EditorAction.ConfirmCurves(processedBitmap))
+                        },
                         onCancel = { viewModel.handleAction(EditorAction.CancelCurves) }
                     )
                 }
@@ -449,9 +462,13 @@ class MainActivity : ComponentActivity() {
                 // Show Flip/Rotate screen
                 if (state.isFlipRotating && state.currentImage != null) {
                     FlipRotateScreen(
-                        bitmap = state.currentImage,
-                        onConfirm = { viewModel.handleAction(EditorAction.ConfirmFlipRotate) },
-                        onCancel = { viewModel.handleAction(EditorAction.CancelFlipRotate) }
+                        bitmap = state.currentImage!!,
+                        onConfirm = { transformedBitmap ->
+                            viewModel.handleAction(EditorAction.SetFlipRotateResult(transformedBitmap))
+                        },
+                        onCancel = {
+                            viewModel.handleAction(EditorAction.CancelFlipRotate)
+                        }
                     )
                 }
 
@@ -599,13 +616,13 @@ class MainActivity : ComponentActivity() {
         } else {
             @Suppress("DEPRECATION")
             window.decorView.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-            )
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_FULLSCREEN
+                    )
         }
     }
 }
