@@ -39,6 +39,7 @@ data class EditorState(
     val showingImageToTextScreen: Boolean = false,
     val isFreeCropping: Boolean = false,
     val isShapeCropping: Boolean = false,
+    val shapeCroppedBitmap: Bitmap? = null,
     val isStretching: Boolean = false,
     val isAdjustingCurves: Boolean = false,
     val isApplyingTiltShift: Boolean = false,
@@ -104,10 +105,10 @@ sealed class EditorAction {
     object HideToolsSheet : EditorAction()
     object StartFilters : EditorAction()
     object CancelFilters : EditorAction()
-    object ConfirmFilters : EditorAction()
+    data class ConfirmFilters(val bitmap: Bitmap) : EditorAction()
     object StartRetouch : EditorAction()
     object CancelRetouch : EditorAction()
-    object ConfirmRetouch : EditorAction()
+    data class ConfirmRetouch(val bitmap: Bitmap) : EditorAction()
     object StartDraw : EditorAction()
     object CancelDraw : EditorAction()
     object ConfirmDraw : EditorAction()
@@ -126,17 +127,19 @@ sealed class EditorAction {
     object ConfirmFreeCrop : EditorAction()
     object StartShapeCrop : EditorAction()
     object CancelShapeCrop : EditorAction()
-    object ConfirmShapeCrop : EditorAction()
+    data class ConfirmShapeCrop(val bitmap: Bitmap) : EditorAction()
     object StartStretch : EditorAction()
     object CancelStretch : EditorAction()
     object ConfirmStretch : EditorAction()
     object StartCurves : EditorAction()
     object CancelCurves : EditorAction()
-    object ConfirmCurves : EditorAction()
+    data class ConfirmCurves(val processedBitmap: Bitmap) : EditorAction()
     object StartTiltShift : EditorAction()
     object CancelTiltShift : EditorAction()
     object ConfirmTiltShift : EditorAction()
     object StartFlipRotate : EditorAction()
     object CancelFlipRotate : EditorAction()
     object ConfirmFlipRotate : EditorAction()
+    data class SetFlipRotateResult(val bitmap: Bitmap) : EditorAction()
+
 }
