@@ -8,8 +8,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.dlab.myaipiceditor.ai.FaceRestoration
-import com.dlab.myaipiceditor.ai.ImageUpscaler
 import com.dlab.myaipiceditor.ai.ObjectRemoval
 import com.dlab.myaipiceditor.ai.PhotoEnhancement
 import com.dlab.myaipiceditor.ai.SmartMaskSnap
@@ -63,8 +61,6 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             is EditorAction.RefineAndPreviewMask -> refineAndPreviewMask()
             is EditorAction.AcceptRefinedMask -> acceptRefinedMask()
             is EditorAction.RejectRefinedMask -> rejectRefinedMask()
-            is EditorAction.RestoreFace -> restoreFace()
-            is EditorAction.UpscaleImage -> upscaleImage()
             is EditorAction.StartPhotoEnhancement -> startPhotoEnhancement()
             is EditorAction.CancelPhotoEnhancement -> cancelPhotoEnhancement()
             is EditorAction.ConfirmPhotoEnhancement -> confirmPhotoEnhancement()
@@ -99,10 +95,22 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             is EditorAction.HideToolsSheet -> _state.value = _state.value.copy(showingToolsSheet = false)
             is EditorAction.StartFilters -> _state.value = _state.value.copy(isFilteringImage = true)
             is EditorAction.CancelFilters -> _state.value = _state.value.copy(isFilteringImage = false)
-            is EditorAction.ConfirmFilters -> _state.value = _state.value.copy(isFilteringImage = false)
+            is EditorAction.ConfirmFilters -> {
+                _state.value = _state.value.copy(
+                    isFilteringImage = false,
+                    currentImage = action.bitmap // Set the new bitmap
+                )
+                addToHistory(action.bitmap) // Add the change to undo/redo history
+            }
             is EditorAction.StartRetouch -> _state.value = _state.value.copy(isRetouchingImage = true)
             is EditorAction.CancelRetouch -> _state.value = _state.value.copy(isRetouchingImage = false)
-            is EditorAction.ConfirmRetouch -> _state.value = _state.value.copy(isRetouchingImage = false)
+            is EditorAction.ConfirmRetouch -> {
+                _state.value = _state.value.copy(
+                    currentImage = action.bitmap,
+                    isRetouchingImage = false
+                )
+                addToHistory(action.bitmap)
+            }
             is EditorAction.StartDraw -> _state.value = _state.value.copy(isDrawing = true)
             is EditorAction.CancelDraw -> _state.value = _state.value.copy(isDrawing = false)
             is EditorAction.ConfirmDraw -> _state.value = _state.value.copy(isDrawing = false)
@@ -121,19 +129,45 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             is EditorAction.ConfirmFreeCrop -> _state.value = _state.value.copy(isFreeCropping = false)
             is EditorAction.StartShapeCrop -> _state.value = _state.value.copy(isShapeCropping = true)
             is EditorAction.CancelShapeCrop -> _state.value = _state.value.copy(isShapeCropping = false)
-            is EditorAction.ConfirmShapeCrop -> _state.value = _state.value.copy(isShapeCropping = false)
+            is EditorAction.ConfirmShapeCrop -> {
+                _state.value = _state.value.copy(
+                    currentImage = action.bitmap,  // Set the cropped bitmap as current image
+                    isShapeCropping = false,
+                    shapeCroppedBitmap = null
+                )
+                addToHistory(action.bitmap)  // Add to undo/redo history
+            }
             is EditorAction.StartStretch -> _state.value = _state.value.copy(isStretching = true)
             is EditorAction.CancelStretch -> _state.value = _state.value.copy(isStretching = false)
             is EditorAction.ConfirmStretch -> _state.value = _state.value.copy(isStretching = false)
             is EditorAction.StartCurves -> _state.value = _state.value.copy(isAdjustingCurves = true)
             is EditorAction.CancelCurves -> _state.value = _state.value.copy(isAdjustingCurves = false)
-            is EditorAction.ConfirmCurves -> _state.value = _state.value.copy(isAdjustingCurves = false)
+            is EditorAction.ConfirmCurves -> {
+                _state.value = _state.value.copy(
+                    currentImage = action.processedBitmap,
+                    isAdjustingCurves = false
+                )
+                addToHistory(action.processedBitmap)
+            }
             is EditorAction.StartTiltShift -> _state.value = _state.value.copy(isApplyingTiltShift = true)
             is EditorAction.CancelTiltShift -> _state.value = _state.value.copy(isApplyingTiltShift = false)
             is EditorAction.ConfirmTiltShift -> _state.value = _state.value.copy(isApplyingTiltShift = false)
-            is EditorAction.StartFlipRotate -> _state.value = _state.value.copy(isFlipRotating = true)
-            is EditorAction.CancelFlipRotate -> _state.value = _state.value.copy(isFlipRotating = false)
-            is EditorAction.ConfirmFlipRotate -> _state.value = _state.value.copy(isFlipRotating = false)
+            is EditorAction.StartFlipRotate -> {
+                _state.value = _state.value.copy(isFlipRotating = true)
+            }
+
+            is EditorAction.CancelFlipRotate -> {
+                _state.value = _state.value.copy(isFlipRotating = false)
+            }
+
+            is EditorAction.SetFlipRotateResult -> {
+                val bitmap = action.bitmap
+                _state.value = _state.value.copy(
+                    currentImage = bitmap,
+                    isFlipRotating = false
+                )
+                addToHistory(bitmap)
+            }
             else -> {}
         }
     }
@@ -570,67 +604,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun restoreFace() {
-        val currentImage = _state.value.currentImage ?: return
 
-        viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isProcessing = true,
-                processingMessage = "Restoring faces..."
-            )
-
-            try {
-                val result = withContext(Dispatchers.Default) {
-                    FaceRestoration.restoreFace(getApplication(), currentImage)
-                }
-
-                _state.value = _state.value.copy(
-                    currentImage = result,
-                    isProcessing = false,
-                    processingMessage = ""
-                )
-                addToHistory(result)
-
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isProcessing = false,
-                    processingMessage = "",
-                    error = "Failed to restore face: ${e.message}"
-                )
-            }
-        }
-    }
-
-    private fun upscaleImage() {
-        val currentImage = _state.value.currentImage ?: return
-
-        viewModelScope.launch {
-            _state.value = _state.value.copy(
-                isProcessing = true,
-                processingMessage = "Upscaling image..."
-            )
-
-            try {
-                val result = withContext(Dispatchers.Default) {
-                    ImageUpscaler.upscale(getApplication(), currentImage)
-                }
-
-                _state.value = _state.value.copy(
-                    currentImage = result,
-                    isProcessing = false,
-                    processingMessage = ""
-                )
-                addToHistory(result)
-
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isProcessing = false,
-                    processingMessage = "",
-                    error = "Failed to upscale image: ${e.message}"
-                )
-            }
-        }
-    }
 
     private fun resizeImage(width: Int, height: Int) {
         val currentImage = _state.value.currentImage ?: return
