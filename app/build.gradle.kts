@@ -112,7 +112,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 }
 
-// Add this entire block at the end of the file
+
 configurations.all {
     resolutionStrategy { // Add this line
         exclude(group = "com.google.ai.edge.litert", module = "litert-api")
