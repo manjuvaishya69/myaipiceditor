@@ -41,7 +41,7 @@ android {
     buildFeatures {
         compose = true
     }
-    
+
 }
 
 dependencies {
@@ -57,14 +57,19 @@ dependencies {
     implementation(libs.androidx.material3)                      // Material3 UI components
 
     // --- AI Models ---
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.1")
+
     // ONNX Runtime → needed to load and run .onnx AI models offline
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.23.2")
 
     // --- TensorFlow Lite (matching versions) ---
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4")
+    implementation("org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4") {
+        // Exclude the transitive dependency that causes the conflict.
+        exclude(group = "com.google.ai.edge.litert", module = "litert-api")
+    }
     implementation("org.tensorflow:tensorflow-lite-gpu-api:2.17.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
 
     // --- Image Processing ---
     implementation("androidx.exifinterface:exifinterface:1.4.1")
@@ -91,6 +96,10 @@ dependencies {
     // --- Material Icons ---
     implementation("androidx.compose.material:material-icons-extended")
     // Extra Material icons (not included by default in Compose)
+    implementation("androidx.compose.ui:ui:1.7.0")
+    implementation("androidx.compose.foundation:foundation:1.7.0")
+    implementation("androidx.compose.material3:material3:1.3.0")
+    implementation("org.opencv:opencv:4.9.0")
 
 
     // --- Testing ---
@@ -101,4 +110,11 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// Add this entire block at the end of the file
+configurations.all {
+    resolutionStrategy { // Add this line
+        exclude(group = "com.google.ai.edge.litert", module = "litert-api")
+    } // And this closing brace
 }
