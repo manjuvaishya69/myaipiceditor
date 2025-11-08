@@ -38,7 +38,7 @@ object AiModelManager {
 
     enum class ModelType(val fileName: String, val isOnnx: Boolean) {
         FACE_RESTORATION("Real_ESRGAN_x4plus_float.tflite", false),
-        OBJECT_REMOVAL("lama_fp32.onnx", true),
+        OBJECT_REMOVAL("deepfillv2.onnx", true), // This is our ONNX model
         IMAGE_UPSCALER("Real_ESRGAN_x4plus_float.tflite", false),
         FOR_SEGMENTATION("deeplabv3_257_mv_gpu.tflite", false)
     }
@@ -153,6 +153,13 @@ object AiModelManager {
                         setInterOpNumThreads(2)
                         setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
                     }
+                    // --- FIX: Add specific case for OBJECT_REMOVAL ---
+                    ModelType.OBJECT_REMOVAL -> {
+                        // LAMA: Force CPU, so use default threads
+                        setIntraOpNumThreads(2)
+                        setInterOpNumThreads(1)
+                        setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
+                    }
                     else -> {
                         // Default settings
                         setIntraOpNumThreads(2)
@@ -161,13 +168,20 @@ object AiModelManager {
                     }
                 }
 
-                // Try NNAPI if available
-                try {
-                    addNnapi()
-                    Log.d(TAG, "NNAPI enabled for ${modelType.fileName}")
-                } catch (e: Exception) {
-                    Log.w(TAG, "NNAPI not available for ${modelType.fileName}, using CPU")
+                // --- FIX: Only add NNAPI if NOT ObjectRemoval ---
+                // This forces OBJECT_REMOVAL to use the CPU, which is reliable.
+                if (modelType == ModelType.OBJECT_REMOVAL) {
+                    Log.w(TAG, "Forcing CPU for ${modelType.fileName}. Disabling NNAPI delegate due to known hardware issues.")
+                } else {
+                    // Try NNAPI for other models
+                    try {
+                        addNnapi()
+                        Log.d(TAG, "NNAPI enabled for ${modelType.fileName}")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "NNAPI not available for ${modelType.fileName}, using CPU")
+                    }
                 }
+                // --- END FIX ---
             }
 
             ortEnvironment.createSession(modelFile.absolutePath, sessionOptions)
@@ -189,9 +203,10 @@ object AiModelManager {
                 // Set number of threads
                 setNumThreads(4)
 
-                // ⬇️ FORCED CPU FALLBACK FOR OBJECT_REMOVAL (aotgan_float.tflite) ⬇️
-                // The log indicates STRIDED_SLICE with reverse slices is not supported by GPU delegate.
-                // We will skip GPU delegate attempt for this specific model to prevent loading failure.
+                // ⬇️ NOTE: This check is likely a bug from your original code ⬇️
+                // ModelType.OBJECT_REMOVAL is ONNX, so it will never be true here.
+                // This doesn't cause harm, but it's incorrect logic.
+                // The *real* fix is in createOnnxSession() above.
                 if (modelType == ModelType.OBJECT_REMOVAL) {
                     Log.d(TAG, "Forcing CPU for ${modelType.fileName} due to GPU delegate incompatibility.")
                     // No delegate is added, CPU will be used as default.
